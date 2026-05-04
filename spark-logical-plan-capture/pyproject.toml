@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spark-logical-plan-capture"
+version = "0.2.1"
+description = "Python wrapper for Spark logical plan capture extension"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "mt"}
+]
+keywords = ["spark", "pyspark", "sql", "logical-plan", "extensions"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries",
+]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://pypi.org/project/spark-logical-plan-capture/"
+
+[tool.setuptools.packages.find]
+include = ["spark_logical_plan_capture*"]
+
+[tool.setuptools.package-data]
+spark_logical_plan_capture = ["jars/*.jar"]
