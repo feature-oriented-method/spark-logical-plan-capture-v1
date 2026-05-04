@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
 class UnsupportedPlanError(ValueError):
@@ -17,7 +17,6 @@ def project_json_to_sql(plan_json: Any) -> str:
     `org.apache.spark.sql.catalyst.plans.logical.Project`.
     Input can be a JSON string, parsed dict/list, or bytes.
     """
-
     parsed = _parse_json(plan_json)
     normalized = _normalize_node(parsed)
     project = _find_first_project(normalized)
@@ -27,6 +26,7 @@ def project_json_to_sql(plan_json: Any) -> str:
 
 
 def _parse_json(plan_json: Any) -> Any:
+    """Parse JSON input from various formats."""
     if isinstance(plan_json, bytes):
         return json.loads(plan_json.decode("utf-8"))
     if isinstance(plan_json, str):
@@ -35,6 +35,7 @@ def _parse_json(plan_json: Any) -> Any:
 
 
 def _find_first_project(node: Any) -> Optional[Dict[str, Any]]:
+    """Recursively find the first Project node in the plan tree."""
     if isinstance(node, dict):
         class_name = _class_name(node)
         if class_name == "Project":
@@ -53,6 +54,7 @@ def _find_first_project(node: Any) -> Optional[Dict[str, Any]]:
 
 
 def _normalize_node(node: Any) -> Any:
+    """Normalize node structure by adding short class names."""
     if isinstance(node, list):
         return [_normalize_node(item) for item in node]
     if isinstance(node, dict):
@@ -64,10 +66,12 @@ def _normalize_node(node: Any) -> Any:
 
 
 def _short_class_name(full_name: str) -> str:
+    """Extract short class name from fully qualified name."""
     return full_name.split(".")[-1]
 
 
 def _class_name(node: Dict[str, Any]) -> str:
+    """Get the class name from a node, preferring cached short form."""
     if "_short_class" in node:
         return str(node["_short_class"])
     if "class" in node:
@@ -76,16 +80,19 @@ def _class_name(node: Dict[str, Any]) -> str:
 
 
 def _sql_quote_identifier(identifier: str) -> str:
+    """Quote SQL identifier if it contains special characters."""
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", identifier):
         return identifier
     return "`" + identifier.replace("`", "``") + "`"
 
 
 def _sql_quote_string(value: str) -> str:
+    """Escape and quote a string value for SQL."""
     return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
 
 
 def _coalesce_keys(node: Dict[str, Any], keys: Sequence[str]) -> Any:
+    """Return the first non-null value from the node for the given keys."""
     for key in keys:
         if key in node:
             return node[key]
@@ -93,6 +100,7 @@ def _coalesce_keys(node: Dict[str, Any], keys: Sequence[str]) -> Any:
 
 
 def _to_list(value: Any) -> List[Any]:
+    """Convert a value to a list, wrapping single items."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -101,6 +109,7 @@ def _to_list(value: Any) -> List[Any]:
 
 
 def _flatten_expression_list(value: Any) -> List[Dict[str, Any]]:
+    """Flatten nested expression structures into a list of class-bearing dicts."""
     out: List[Dict[str, Any]] = []
 
     def walk(item: Any) -> None:
@@ -121,12 +130,16 @@ def _flatten_expression_list(value: Any) -> List[Dict[str, Any]]:
 
 @dataclass
 class _ProjectSqlBuilder:
+    """Builds SQL SELECT statements from Spark Project logical plan nodes."""
+
     def build(self, project: Dict[str, Any]) -> str:
+        """Build complete SELECT statement from a Project node."""
         select_exprs = self._render_project_list(project)
         from_sql = self._render_from_clause(project)
         return f"SELECT {', '.join(select_exprs)}{from_sql}"
 
     def _render_project_list(self, project: Dict[str, Any]) -> List[str]:
+        """Render the project list expressions as SQL select items."""
         project_list = _coalesce_keys(project, ("projectList", "project_list", "list"))
         expressions = _to_list(project_list)
         if not expressions:
@@ -144,6 +157,7 @@ class _ProjectSqlBuilder:
         return rendered
 
     def _render_named_expression(self, expr: Dict[str, Any]) -> str:
+        """Render an expression with optional alias."""
         class_name = _class_name(expr)
         if class_name == "Alias":
             child = _coalesce_keys(expr, ("child", "children", "expr"))
@@ -163,6 +177,7 @@ class _ProjectSqlBuilder:
         return self._render_expression(expr)
 
     def _render_from_clause(self, project: Dict[str, Any]) -> str:
+        """Render the FROM clause from the child relation."""
         child = _coalesce_keys(project, ("child", "children"))
         child_node = self._first_child(child)
         if child_node is None:
@@ -171,6 +186,7 @@ class _ProjectSqlBuilder:
         return f" FROM {rendered}" if rendered else ""
 
     def _render_relation(self, node: Dict[str, Any]) -> str:
+        """Render a relation (table, subquery, etc.) as SQL."""
         class_name = _class_name(node)
 
         if class_name == "OneRowRelation":
@@ -199,6 +215,7 @@ class _ProjectSqlBuilder:
         return f"({self._render_select_like(node)})"
 
     def _render_select_like(self, node: Dict[str, Any]) -> str:
+        """Render various logical plan nodes as SELECT-like SQL."""
         class_name = _class_name(node)
         if class_name == "Project":
             return self.build(node)
@@ -248,6 +265,7 @@ class _ProjectSqlBuilder:
         return "SELECT *"
 
     def _render_expression(self, expr: Any) -> str:
+        """Render a Spark expression node as SQL."""
         if expr is None:
             return "NULL"
         if not isinstance(expr, dict):
@@ -389,6 +407,7 @@ class _ProjectSqlBuilder:
         return self._render_function_call(func_name, children)
 
     def _render_literal(self, expr: Dict[str, Any]) -> str:
+        """Render a Literal expression node as SQL."""
         value = _coalesce_keys(expr, ("value", "literal", "v"))
         data_type = str(_coalesce_keys(expr, ("dataType", "type")) or "").lower()
         if value is None:
@@ -419,10 +438,12 @@ class _ProjectSqlBuilder:
         return _sql_quote_string(str(value))
 
     def _render_function_call(self, name: str, children: Sequence[Any]) -> str:
+        """Render a function call with arguments."""
         args = ", ".join(self._render_expression(child) for child in children)
         return f"{name}({args})"
 
     def _children(self, expr: Dict[str, Any]) -> List[Any]:
+        """Extract all child expressions from a node."""
         explicit_children = _coalesce_keys(expr, ("children", "arguments", "args", "inputs"))
         children: List[Any] = []
         if explicit_children is not None:
@@ -459,6 +480,7 @@ class _ProjectSqlBuilder:
         return [c for c in flattened if isinstance(c, (dict, str, int, float, bool)) and c is not None]
 
     def _first_child(self, value: Any) -> Optional[Any]:
+        """Return the first child element from a value."""
         if value is None:
             return None
         if isinstance(value, list):
@@ -466,6 +488,7 @@ class _ProjectSqlBuilder:
         return value
 
     def _second_child(self, value: Any) -> Optional[Any]:
+        """Return the second child element from a value."""
         if value is None:
             return None
         if isinstance(value, list):
@@ -474,5 +497,6 @@ class _ProjectSqlBuilder:
 
 
 def _camel_to_snake(name: str) -> str:
+    """Convert CamelCase to snake_case."""
     s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
