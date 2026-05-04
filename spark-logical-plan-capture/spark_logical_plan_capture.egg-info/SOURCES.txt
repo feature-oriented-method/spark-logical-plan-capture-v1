@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+spark_logical_plan_capture/__init__.py
+spark_logical_plan_capture/runtime.py
+spark_logical_plan_capture.egg-info/PKG-INFO
+spark_logical_plan_capture.egg-info/SOURCES.txt
+spark_logical_plan_capture.egg-info/dependency_links.txt
+spark_logical_plan_capture.egg-info/top_level.txt
+spark_logical_plan_capture/jars/spark-logical-plan-capture_2.13-0.2.0.jar
+spark_logical_plan_capture/sql_restore/__init__.py
+spark_logical_plan_capture/sql_restore/project_sql.py
